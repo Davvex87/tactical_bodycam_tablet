@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models\ALmodels\Items\ActionCam\ActionCam"
+	"$envmap" "env_cubemap"
+	"$basealphaenvmapmask" "1"
+
+	"$phong" "1"
+	"$phongexponent" "10"
+	"$phongboost" "2"
+	"$phongfresnelranges"	"[0.5 1 0.5]"
+}
