@@ -94,6 +94,39 @@ function SWEP:Holster()
     return true
 end
 
+function GetEntityViewData(ent)
+    if not IsValid(ent) then return nil, nil end
+
+    local attID = ent:LookupAttachment("eyes")
+    if attID and attID > 0 then
+        local att = ent:GetAttachment(attID)
+        if att and att.Pos and att.Ang then
+            local offset = math.max(4, ent:BoundingRadius() * 0.02)
+            return att.Pos + att.Ang:Forward() * offset, att.Ang
+        end
+    end
+
+    local boneID = ent:LookupBone("ValveBiped.Bip01_Head1")
+    if boneID then
+        local pos, ang = ent:GetBonePosition(boneID)
+        if pos and ang then
+            local offset = math.max(4, ent:BoundingRadius() * 0.02)
+            return pos + ang:Forward() * offset, ang
+        end
+    end
+
+    if ent.EyePos and ent.EyeAngles then
+        local pos, ang = ent:EyePos(), ent:EyeAngles()
+        if pos and ang then
+            local offset = math.max(4, ent:BoundingRadius() * 0.02)
+            return pos + ang:Forward() * offset, ang
+        end
+    end
+
+    return nil, nil
+end
+
+
 function SWEP:SecondaryAttack()
     if self:GetNextSecondaryFire() > CurTime() then return end
     self:SetNextSecondaryFire(CurTime() + 2)
@@ -101,7 +134,8 @@ function SWEP:SecondaryAttack()
     local trace = util.QuickTrace(self.Owner:EyePos(), self.Owner:GetAimVector() * 100, self.Owner)
     local tr = trace.Entity
 
-    if not IsValid(tr) or (not tr:IsPlayer() and not tr:IsNPC()) then return end
+    --if not IsValid(tr) or (not tr:IsPlayer() and (not tr:IsNPC() and (tr.Base == nil or not tr.Base:lower():find("nextbot")))) then return end
+    if not IsValid(tr) or (not tr:IsPlayer() and not (tr:IsNPC() or tr:IsNextBot())) then return end
 
     for _,v in ipairs(self.BodyCamPeople) do
         if v == tr then
@@ -121,15 +155,9 @@ function SWEP:SecondaryAttack()
 
 
 
-    local attname = "eyes"
-    local head = tr:LookupAttachment(attname)
-
-        if head == 0 then
-            attname = "Eye"
-            head = tr:LookupAttachment(attname)
-        end
+    local valid = GetEntityViewData(tr)
     
-    if head == 0 then self.Owner:ChatPrint("This target can't have bodycam") return end
+    if not valid then self.Owner:ChatPrint("This target can't have bodycam") return end
 
     if table.Count(self.BodyCamPeople) >= GetConVar("bodycam_max_people"):GetInt() then self.Owner:ChatPrint("All Bodycams is in use") return end
 
@@ -226,12 +254,9 @@ if SERVER then
 
         AddOriginToPVS(target:GetPos())
 
-        local att = target:LookupAttachment("eyes") or target:LookupAttachment("Eye")
-        if att and att > 0 then
-            local data = target:GetAttachment(att)
-            if data and data.Pos then
-                AddOriginToPVS(data.Pos)
-            end
+        local pos, ang = GetEntityViewData(target)
+        if pos then
+            AddOriginToPVS(pos)
         end
     end)
 
@@ -441,16 +466,10 @@ if CLIENT then
 
                     if not target.LookupAttachment then return end
 
-                    local attname = "eyes"
-                    local head = target:LookupAttachment(attname)
+                    local pos, ang = GetEntityViewData(target)
 
-                    if head == 0 then
-                        attname = "Eye"
-                        head = target:LookupAttachment(attname)
-                    end
-
-                    if not IsValid(target) or not target:Alive() or not LocalPlayer():Alive() or not IsValid(LocalPlayer()) or (head == 0) then
-                        if head == 0 then 
+                    if not IsValid(target) or not target:Alive() or not LocalPlayer():Alive() or not IsValid(LocalPlayer()) or (not pos) then
+                        if not pos then 
                             LocalPlayer():ChatPrint("This target can't have bodycam")
                         end
                         frame:Remove()
@@ -470,35 +489,39 @@ if CLIENT then
 
                     local posx, posy = me:GetX() + frame:GetX(), me:GetY() + frame:GetY()
 
-                    if not target.GetAttachment then return end
-                    local attachment = target:GetAttachment(head)
-                    if not attachment or not attachment.Pos or not attachment.Ang then
-                        return
-                    end
-
-                    
-
                     if w <= 0 or h <= 0 then return end
 
                     local old = DisableClipping( true )
 
+                    local hideEntity = GetConVar("bodycam_hide_entity_model"):GetBool()
+                    local oldRender = nil
+                    if hideEntity and IsValid(target) then
+                        oldRender = target.RenderOverride
+                        target.RenderOverride = function() end
+                    end
+
                     render.RenderView({
-                        origin = attachment.Pos,
-                        angles = attachment.Ang,
+                        origin = pos,
+                        angles = ang,
                         x = posx, y = posy,
                         w = w, h = h,
                         fov = 125,
                         drawviewmodel = false,
                         drawhud = true,
+                        znear = GetConVar("bodycam_near_clip_plane"):GetInt()
                     })
 
                     DisableClipping( old )
+
+                    if hideEntity and IsValid(target) then
+                        target.RenderOverride = oldRender
+                    end
 
                     shouldDrawPlayer = false
 
                     local time = os.date("%Y-%m-%d %H:%M:%S")
                     draw.SimpleText("CAM-0".. target_index .. " " .. time, "CameraFont", w * 0.97, h * 0.03, Color(255,255,255), TEXT_ALIGN_RIGHT, TEXT_ALIGN_RIGHT)
-                    draw.SimpleText(GetName(target), "CameraFont", w * 0.97, h * 0.07, Color(255,255,255), TEXT_ALIGN_RIGHT, TEXT_ALIGN_RIGHT)
+                    draw.SimpleText(GetName(target) or "", "CameraFont", w * 0.97, h * 0.07, Color(255,255,255), TEXT_ALIGN_RIGHT, TEXT_ALIGN_RIGHT)
 
                     local dlight = DynamicLight(target:EntIndex())
                     if dlight and light then

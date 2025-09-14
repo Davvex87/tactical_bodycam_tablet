@@ -5,6 +5,9 @@ CreateConVar("bodycam_time_to_attach", "10", FCVAR_ARCHIVE + FCVAR_REPLICATED + 
 CreateConVar("bodycam_camera_up", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED + FCVAR_SERVER_CAN_EXECUTE)
 CreateConVar("bodycam_camera_forward", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED + FCVAR_SERVER_CAN_EXECUTE)
 
+CreateClientConVar("bodycam_hide_entity_model", "0", true, false, "Hides the entity model on tablet, helps prevent clipping issues with non-humanoid npcs.", 0, 1)
+CreateClientConVar("bodycam_near_clip_plane", "1", true, false, "Changes the distance from the center of the camera at which it will render geometry, increase to help reduce clipping issues.", 0, 60)
+
 if SERVER then
     util.AddNetworkString("bodycam_cvar")
     util.AddNetworkString("bodycam_send_initial_cvars")
@@ -31,6 +34,8 @@ if CLIENT then
     local initialTime = GetConVar("bodycam_time_to_attach"):GetInt()
     local initialCameraUp = GetConVar("bodycam_camera_up"):GetInt()
     local initialCameraForward = GetConVar("bodycam_camera_forward"):GetInt()
+    local initialHidden = GetConVar("bodycam_hide_entity_model"):GetBool()
+    local initialNearClip = GetConVar("bodycam_near_clip_plane"):GetInt()
 
     local lastChangeTime = {
         maxPeople = 0,
@@ -119,51 +124,51 @@ if CLIENT then
                 desc:SetFont("DermaDefaultBold")
                 panel:AddItem(desc)
 
-                local cameraUpSlider = vgui.Create("DNumSlider", panel)
-                    cameraUpSlider:SetText("Camera Up")
-                    cameraUpSlider:SetMinMax(-10, 10)
-                    cameraUpSlider:SetDecimals(0)
-                    cameraUpSlider:Dock(TOP)
-                    cameraUpSlider:SetDark(true)
-                    cameraUpSlider:SetValue(initialCameraUp)
-                    cameraUpSlider:SetEnabled(canEdit)
-                    panel:AddItem(cameraUpSlider)
+            local cameraUpSlider = vgui.Create("DNumSlider", panel)
+                cameraUpSlider:SetText("Camera Up")
+                cameraUpSlider:SetMinMax(-10, 10)
+                cameraUpSlider:SetDecimals(0)
+                cameraUpSlider:Dock(TOP)
+                cameraUpSlider:SetDark(true)
+                cameraUpSlider:SetValue(initialCameraUp)
+                cameraUpSlider:SetEnabled(canEdit)
+                panel:AddItem(cameraUpSlider)
 
-                    cameraUpSlider.OnValueChanged = function(self, val)
-                        if not canEdit then return end
-                        local now = SysTime()
-                        if now - lastChangeTime.cameraUp < cooldown then return end
-                        if initialCameraUp == val then return end
-                        lastChangeTime.cameraUp = now
+                cameraUpSlider.OnValueChanged = function(self, val)
+                    if not canEdit then return end
+                    local now = SysTime()
+                    if now - lastChangeTime.cameraUp < cooldown then return end
+                    if initialCameraUp == val then return end
+                    lastChangeTime.cameraUp = now
 
-                        net.Start("bodycam_cvar")
-                            net.WriteString("bodycam_camera_up")
-                            net.WriteInt(math.floor(val), 8)
-                        net.SendToServer()
-                    end
+                    net.Start("bodycam_cvar")
+                        net.WriteString("bodycam_camera_up")
+                        net.WriteInt(math.floor(val), 8)
+                    net.SendToServer()
+                end
 
-                local cameraForwardSlider = vgui.Create("DNumSlider", panel)
-                    cameraForwardSlider:SetText("Camera Forward")
-                    cameraForwardSlider:SetMinMax(-10, 10)
-                    cameraForwardSlider:SetDecimals(0)
-                    cameraForwardSlider:Dock(TOP)
-                    cameraForwardSlider:SetDark(true)
-                    cameraForwardSlider:SetValue(initialCameraForward)
-                    cameraForwardSlider:SetEnabled(canEdit)
-                    panel:AddItem(cameraForwardSlider)
+            local cameraForwardSlider = vgui.Create("DNumSlider", panel)
+                cameraForwardSlider:SetText("Camera Forward")
+                cameraForwardSlider:SetMinMax(-10, 10)
+                cameraForwardSlider:SetDecimals(0)
+                cameraForwardSlider:Dock(TOP)
+                cameraForwardSlider:SetDark(true)
+                cameraForwardSlider:SetValue(initialCameraForward)
+                cameraForwardSlider:SetEnabled(canEdit)
+                panel:AddItem(cameraForwardSlider)
 
-                        cameraForwardSlider.OnValueChanged = function(self, val)
-                            if not canEdit then return end
-                            local now = SysTime()
-                            if now - lastChangeTime.cameraForward < cooldown then return end
-                            if initialCameraForward == val then return end
-                            lastChangeTime.cameraForward = now
+                cameraForwardSlider.OnValueChanged = function(self, val)
+                    if not canEdit then return end
+                    local now = SysTime()
+                    if now - lastChangeTime.cameraForward < cooldown then return end
+                    if initialCameraForward == val then return end
+                    lastChangeTime.cameraForward = now
 
-                            net.Start("bodycam_cvar")
-                                net.WriteString("bodycam_camera_forward")
-                                net.WriteInt(math.floor(val), 8)
-                            net.SendToServer()
-                        end
+                    net.Start("bodycam_cvar")
+                        net.WriteString("bodycam_camera_forward")
+                        net.WriteInt(math.floor(val), 8)
+                    net.SendToServer()
+                end
 
 
             local desc = vgui.Create("DLabel", panel)
@@ -174,10 +179,16 @@ if CLIENT then
                 desc:SetTextColor(Color(50, 50, 50))
                 panel:AddItem(desc)
 
-                cvars.AddChangeCallback("bodycam_max_people", function(name,old,new) maxPeopleSlider:SetValue(new) end)
-                cvars.AddChangeCallback("bodycam_time_to_attach", function(name,old,new) timeattachSlider:SetValue(new) end)
-                cvars.AddChangeCallback("bodycam_camera_up", function(name,old,new) cameraUpSlider:SetValue(new) end)
-                cvars.AddChangeCallback("bodycam_camera_forward", function(name,old,new) cameraForwardSlider:SetValue(new)  end)
+            panel:CheckBox("Hide entity model on tablet view", "bodycam_hide_entity_model")
+            panel:ControlHelp("Hides the entity model on tablet, helps prevent clipping issues with non-humanoid npcs.")
+
+            panel:NumSlider("Camera Near Clip Plane", "bodycam_near_clip_plane", 0, 60, 0)
+            panel:ControlHelp("Changes the distance from the center of the camera at which it will render geometry, increase to help reduce clipping issues.")
+
+            cvars.AddChangeCallback("bodycam_max_people", function(name,old,new) maxPeopleSlider:SetValue(new) end)
+            cvars.AddChangeCallback("bodycam_time_to_attach", function(name,old,new) timeattachSlider:SetValue(new) end)
+            cvars.AddChangeCallback("bodycam_camera_up", function(name,old,new) cameraUpSlider:SetValue(new) end)
+            cvars.AddChangeCallback("bodycam_camera_forward", function(name,old,new) cameraForwardSlider:SetValue(new)  end)
 
         end)
     end)
